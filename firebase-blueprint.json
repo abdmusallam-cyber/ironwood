@@ -1,0 +1,165 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "An item for sale in the store.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "discountPrice": { "type": "number" },
+        "stock": { "type": "integer" },
+        "category": { "type": "string", "enum": ["wood", "metal", "combined"] },
+        "imageUrl": { "type": "string" },
+        "rating": { "type": "number" },
+        "availableColors": { "type": "array", "items": { "type": "string" } },
+        "variants": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "textureUrl": { "type": "string" },
+              "colorHex": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "price", "stock", "category", "imageUrl"]
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "Customer feedback item.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "quote": { "type": "string" }
+      }
+    },
+    "SiteSettings": {
+      "title": "Site Settings",
+      "description": "Global site configuration.",
+      "type": "object",
+      "properties": {
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" },
+        "instagram": { "type": "string" },
+        "facebook": { "type": "string" },
+        "twitter": { "type": "string" },
+        "aboutText": { "type": "string" },
+        "vodafoneCashNumber": { "type": "string" },
+        "instapayVpa": { "type": "string" },
+        "successTitle": { "type": "string" },
+        "successMessage": { "type": "string" }
+      }
+    },
+    "Order": {
+      "title": "Order",
+      "description": "A purchase record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "items": { "type": "array" },
+        "total": { "type": "number" },
+        "shippingCost": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "processing", "paid", "shipped", "delivered"] },
+        "shippingInfo": { 
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "address": { "type": "string" },
+            "governorate": { "type": "string" },
+            "city": { "type": "string" },
+            "phone": { "type": "string" },
+            "location": { "type": "object" },
+            "paymentMethod": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    },
+    "ShippingRate": {
+      "title": "Shipping Rate",
+      "description": "Cost of shipping per governorate.",
+      "type": "object",
+      "properties": {
+        "governorate": { "type": "string" },
+        "rate": { "type": "number" }
+      }
+    },
+    "Testimonial": {
+      "title": "Testimonial",
+      "description": "Customer feedback.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "quote": { "type": "string" },
+        "rating": { "type": "integer" },
+        "avatarUrl": { "type": "string" }
+      }
+    },
+    "PortfolioItem": {
+      "title": "Portfolio Item",
+      "description": "Display of previous work.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string" },
+        "year": { "type": "string" }
+      }
+    },
+    "HomeHighlight": {
+      "title": "Home Highlight",
+      "description": "Hero section content for home page.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "category": { "type": "string" }
+      }
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Live chat message.",
+      "type": "object",
+      "properties": {
+        "text": { "type": "string" },
+        "senderId": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      }
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile data.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "products/{productId}": { "schema": "Product", "description": "Collection of products." },
+    "orders/{orderId}": { "schema": "Order", "description": "Collection of orders." },
+    "testimonials/{testimonialId}": { "schema": "Testimonial", "description": "Customer testimonials." },
+    "portfolio/{portfolioId}": { "schema": "PortfolioItem", "description": "Gallery items." },
+    "homeHighlights/{highlightId}": { "schema": "HomeHighlight", "description": "Home page hero sections." },
+    "settings/{settingId}": { "schema": "SiteSettings", "description": "Global settings." },
+    "messages/{messageId}": { "schema": "Message", "description": "Chat messages." },
+    "users/{userId}": { "schema": "User", "description": "User account data." },
+    "shippingRates/{rateId}": { "schema": "ShippingRate", "description": "Shipping costs by region." }
+  }
+}
