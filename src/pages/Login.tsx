@@ -397,6 +397,13 @@ export default function Login() {
 
     try {
       setLoading(true);
+
+      // Vercel/Chrome: popups are often blocked; same-tab redirect is reliable if getRedirectResult runs before onAuthStateChanged (see App.tsx).
+      if (import.meta.env.PROD) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+
       const result = await signInWithPopup(auth, provider);
       await ensureGoogleUserProfileFirestore(result.user);
       toast.success("تم تسجيل الدخول بنجاح عبر Google");
@@ -410,7 +417,7 @@ export default function Login() {
 
       if (useRedirect) {
         try {
-          toast.info("النوافذ المنبثقة محظورة — سيتم فتح Google في نفس الصفحة.");
+          toast.info("سيتم فتح Google في نفس الصفحة لإكمال الدخول…");
           await signInWithRedirect(auth, provider);
           return;
         } catch (redirectErr) {

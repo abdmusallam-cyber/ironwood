@@ -46,7 +46,9 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Required Firebase connection test
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
     const testConnection = async () => {
       try {
         await getDocFromServer(doc(db, "test", "connection"));
@@ -56,49 +58,53 @@ export default function App() {
         }
       }
     };
-    testConnection();
+    void testConnection();
 
     void (async () => {
       try {
         const redirectResult = await getRedirectResult(auth);
+        if (cancelled) return;
         if (redirectResult?.user) {
           await ensureGoogleUserProfileFirestore(redirectResult.user);
         }
       } catch (e) {
         console.warn("getRedirectResult:", e);
       }
+      if (cancelled) return;
+
+      unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+        if (firebaseUser) {
+          const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
+          const isAdminEmail = firebaseUser.email?.toLowerCase() === "abd.musallam@gmail.com";
+
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUser({
+              id: firebaseUser.uid,
+              ...userData,
+              role: isAdminEmail ? "admin" : (userData.role || "user")
+            } as UserProfile);
+          } else {
+            setUser({
+              id: firebaseUser.uid,
+              displayName: firebaseUser.displayName || firebaseUser.phoneNumber || "",
+              email: firebaseUser.email || "",
+              phoneNumber: firebaseUser.phoneNumber || "",
+              role: isAdminEmail ? "admin" : "user",
+              createdAt: new Date(),
+            } as UserProfile);
+          }
+        } else {
+          setUser(null);
+        }
+        setLoading(false);
+      });
     })();
 
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-        const isAdminEmail = firebaseUser.email?.toLowerCase() === "abd.musallam@gmail.com";
-        
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          setUser({ 
-            id: firebaseUser.uid, 
-            ...userData,
-            role: isAdminEmail ? "admin" : (userData.role || "user")
-          } as UserProfile);
-        } else {
-          // If doc doesn't exist yet (e.g. first login), set basic info
-          setUser({
-            id: firebaseUser.uid,
-            displayName: firebaseUser.displayName || firebaseUser.phoneNumber || "",
-            email: firebaseUser.email || "",
-            phoneNumber: firebaseUser.phoneNumber || "",
-            role: isAdminEmail ? "admin" : "user",
-            createdAt: new Date(),
-          } as UserProfile);
-        }
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
   if (loading) {
