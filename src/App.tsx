@@ -5,9 +5,10 @@
 
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { createContext, useContext, useState, useEffect } from "react";
-import { onAuthStateChanged } from "firebase/auth";
+import { getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, getDocFromServer } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
+import { ensureGoogleUserProfileFirestore } from "./lib/ensureGoogleUserProfile";
 import { UserProfile } from "./types";
 import "./lib/i18n";
 import { I18nextProvider } from "react-i18next";
@@ -56,6 +57,17 @@ export default function App() {
       }
     };
     testConnection();
+
+    void (async () => {
+      try {
+        const redirectResult = await getRedirectResult(auth);
+        if (redirectResult?.user) {
+          await ensureGoogleUserProfileFirestore(redirectResult.user);
+        }
+      } catch (e) {
+        console.warn("getRedirectResult:", e);
+      }
+    })();
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {

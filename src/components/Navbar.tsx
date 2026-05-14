@@ -32,7 +32,12 @@ export default function Navbar({ user }: NavbarProps) {
       try {
         const settings = await getSiteSettings();
         if (settings?.navigationLinks?.length) {
-          setNavLinks(settings.navigationLinks);
+          setNavLinks(
+            settings.navigationLinks.map((l) => ({
+              name: l.label,
+              path: l.path,
+            }))
+          );
         }
       } catch (error) {
         console.error("Failed to load navbar settings:", error);

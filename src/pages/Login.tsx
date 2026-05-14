@@ -13,7 +13,8 @@ import {
   PhoneAuthProvider,
   linkWithCredential,
   GoogleAuthProvider,
-  signInWithPopup
+  signInWithPopup,
+  signInWithRedirect
 } from "firebase/auth";
 import {
   doc,
@@ -26,6 +27,7 @@ import {
   getDoc,
   serverTimestamp
 } from "firebase/firestore";
+import { ensureGoogleUserProfileFirestore } from "../lib/ensureGoogleUserProfile";
 import { EGYPT_GOVERNORATES } from "../constants/egyptData";
 import { toast } from "sonner";
 import {
@@ -41,6 +43,12 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 
 function authErrorMessage(error: unknown): string {
+  if (
+    error instanceof Error &&
+    /missing initial state|Unable to process request due to missing initial state/i.test(error.message)
+  ) {
+    return "تعذّر إكمال تسجيل الدخول: المتصفح حجب التخزين المؤقت (غالباً وضع خاص، أو فتح الموقع داخل تطبيق مثل فيسبوك/إنستغرام، أو إعدادات خصوصية صارمة). افتح الرابط في Chrome أو Safari أو Edge خارج التطبيق، أو جرّب نافذة عادية غير «المتصفح داخل التطبيق».";
+  }
   if (error instanceof FirebaseError && error.code.startsWith("auth/")) {
     switch (error.code) {
       case "auth/invalid-credential":
@@ -65,6 +73,17 @@ function authErrorMessage(error: unknown): string {
       case "auth/invalid-verification-code":
       case "auth/invalid-verification-id":
         return "رمز التحقق غير صحيح أو منتهي. اطلب رمزاً جديداً.";
+      case "auth/argument-error":
+        return "بيانات غير صالحة لخدمة الدخول (مثلاً رقم موبايل أو reCAPTCHA). تحقق من الرقم بصيغة 01xxxxxxxxx وأعد المحاولة.";
+      case "auth/invalid-phone-number":
+      case "auth/missing-phone-number":
+        return "رقم الموبايل غير صحيح. استخدم 01xxxxxxxxx (مصر) مع رمز الدولة +20.";
+      case "auth/captcha-check-failed":
+        return "فشل التحقق الآلي (reCAPTCHA). أعد تحميل الصفحة وحاول مرة أخرى.";
+      case "auth/popup-blocked":
+        return "المتصفح حجب نافذة Google. إن لم يُفتح تسجيل الدخول تلقائياً في نفس الصفحة، اسمح بالنوافذ المنبثقة لهذا الموقع من أيقونة القفل في شريط العنوان ثم أعد المحاولة.";
+      case "auth/operation-not-supported-in-this-environment":
+        return "هذا المتصفح لا يدعم طريقة الدخول المطلوبة. جرّب متصفحاً عادياً أو الدخول بالبريد وكلمة المرور.";
       default:
         return error.message;
     }
@@ -120,30 +139,16 @@ export default function Login() {
     }
   }, [phoneVerificationEnabled]);
 
-  useEffect(() => {
-    if (page === "verify") {
-      const timer = setTimeout(() => {
-        try {
-          if (window.recaptchaVerifier) {
-            window.recaptchaVerifier.clear();
-          }
-          window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
-            size: "invisible"
-          });
-        } catch (error) {
-          console.error("Recaptcha init error:", error);
-        }
-      }, 150);
-
-      return () => {
-        clearTimeout(timer);
-        if (window.recaptchaVerifier) {
-          try { window.recaptchaVerifier.clear(); } catch (e) {}
-          window.recaptchaVerifier = null;
-        }
-      };
+  const clearRecaptchaVerifier = () => {
+    if (window.recaptchaVerifier) {
+      try {
+        window.recaptchaVerifier.clear();
+      } catch {
+        /* already destroyed */
+      }
+      window.recaptchaVerifier = null;
     }
-  }, [page]);
+  };
 
   const normalizePhone = (raw: string) => {
     const digits = raw
@@ -153,6 +158,13 @@ export default function Login() {
     if (digits.startsWith("+")) return digits;
     if (digits.startsWith("0")) return `+20${digits.slice(1)}`;
     return `+20${digits}`;
+  };
+
+  /** Firebase Phone Auth expects E.164; Egypt mobile = +20 + 10 digits after leading 0. */
+  const assertValidEgyptPhoneE164 = (e164: string) => {
+    if (!/^\+20[0-9]{10}$/.test(e164)) {
+      throw new Error("رقم الموبايل غير صحيح. استخدم 01xxxxxxxxx (11 رقماً بعد الصفر).");
+    }
   };
 
   const resolveIdentifierToEmail = async (identifier: string) => {
@@ -183,8 +195,14 @@ export default function Login() {
     event.preventDefault();
     try {
       setLoading(true);
+      if (!loginData.password) {
+        throw new Error("يرجى إدخال كلمة المرور.");
+      }
       const email = await resolveIdentifierToEmail(loginData.identifier);
-      await signInWithEmailAndPassword(auth, email, loginData.password);
+      if (!email || !email.includes("@")) {
+        throw new Error("البريد الإلكتروني غير صالح.");
+      }
+      await signInWithEmailAndPassword(auth, email.trim(), loginData.password);
       toast.success("تم تسجيل الدخول بنجاح");
       navigate("/");
     } catch (error: any) {
@@ -228,22 +246,40 @@ export default function Login() {
     event.preventDefault();
     try {
       setLoading(true);
+      const email = registerData.email.trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        throw new Error("أدخل بريداً إلكترونياً صحيحاً.");
+      }
+      if (registerData.password.length < 6) {
+        throw new Error("كلمة المرور يجب أن تكون 6 أحرف على الأقل.");
+      }
       await checkAccountExists();
       const userCredential = await createUserWithEmailAndPassword(
         auth,
-        registerData.email.trim().toLowerCase(),
+        email,
         registerData.password
       );
 
       if (registerData.verifyPhone) {
-        if (!window.recaptchaVerifier) {
-          window.recaptchaVerifier = new RecaptchaVerifier(auth, "recaptcha-container", {
-            size: "invisible"
-          });
+        const e164 = normalizePhone(registerData.phoneNumber);
+        assertValidEgyptPhoneE164(e164);
+
+        clearRecaptchaVerifier();
+        const container = document.getElementById("recaptcha-container");
+        if (!container) {
+          throw new Error("تعذّر تهيئة التحقق الآلي. أعد تحميل الصفحة.");
         }
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, container, {
+          size: "invisible",
+          callback: () => {
+            /* invisible widget solved */
+          }
+        });
+
         const provider = new PhoneAuthProvider(auth);
-        const verificationId = await provider.verifyPhoneNumber(normalizePhone(registerData.phoneNumber), window.recaptchaVerifier);
-        setVerificationId(verificationId);
+        const newVerificationId = await provider.verifyPhoneNumber(e164, window.recaptchaVerifier);
+        clearRecaptchaVerifier();
+        setVerificationId(newVerificationId);
         setPage("verify");
         toast.success("تم إرسال رمز التحقق إلى رقم الموبايل");
       } else {
@@ -253,6 +289,7 @@ export default function Login() {
       }
     } catch (error: any) {
       console.error("Register error:", error);
+      clearRecaptchaVerifier();
       toast.error(authErrorMessage(error) || "فشل التسجيل. يرجى التحقق من البيانات.");
     } finally {
       setLoading(false);
@@ -265,7 +302,11 @@ export default function Login() {
 
     try {
       setLoading(true);
-      const credential = PhoneAuthProvider.credential(verificationId, otp);
+      const code = otp.trim();
+      if (!/^\d{6}$/.test(code)) {
+        throw new Error("أدخل رمز التحقق المكوّن من 6 أرقام.");
+      }
+      const credential = PhoneAuthProvider.credential(verificationId, code);
       if (!auth.currentUser) throw new Error("لم يتم العثور على المستخدم.");
       await linkWithCredential(auth.currentUser, credential);
       await createUserDocument(auth.currentUser.uid, true);
@@ -288,7 +329,7 @@ export default function Login() {
       navigate("/");
     } catch (error: any) {
       console.error("Skip verification error:", error);
-      toast.error(error.message || "حدث خطأ أثناء إكمال التسجيل.");
+      toast.error(authErrorMessage(error) || "حدث خطأ أثناء إكمال التسجيل.");
     } finally {
       setLoading(false);
     }
@@ -313,34 +354,35 @@ export default function Login() {
   };
 
   const handleGoogleSignIn = async () => {
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: "select_account" });
+
     try {
       setLoading(true);
-      const provider = new GoogleAuthProvider();
       const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-
-      // Check if user exists in Firestore, if not create document
-      const userDoc = await getDoc(doc(db, "users", user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, "users", user.uid), {
-          username: user.displayName?.toLowerCase().replace(/\s+/g, '') || user.email?.split('@')[0],
-          displayName: user.displayName || user.email?.split('@')[0],
-          email: user.email?.toLowerCase(),
-          phoneNumber: user.phoneNumber || "",
-          governorate: "",
-          city: "",
-          address: "",
-          role: user.email === "abd.musallam@gmail.com" ? "admin" : "user",
-          phoneVerified: false,
-          createdAt: serverTimestamp()
-        });
-      }
-
+      await ensureGoogleUserProfileFirestore(result.user);
       toast.success("تم تسجيل الدخول بنجاح عبر Google");
       navigate("/");
     } catch (error: any) {
-      console.error("Google sign-in error:", error);
-      toast.error(authErrorMessage(error) || "فشل تسجيل الدخول عبر Google");
+      const useRedirect =
+        error instanceof FirebaseError &&
+        (error.code === "auth/popup-blocked" ||
+          error.code === "auth/cancelled-popup-request" ||
+          error.code === "auth/operation-not-supported-in-this-environment");
+
+      if (useRedirect) {
+        try {
+          toast.info("النوافذ المنبثقة محظورة — سيتم فتح Google في نفس الصفحة.");
+          await signInWithRedirect(auth, provider);
+          return;
+        } catch (redirectErr) {
+          console.error("Google redirect sign-in error:", redirectErr);
+          toast.error(authErrorMessage(redirectErr) || "فشل تسجيل الدخول عبر Google");
+        }
+      } else {
+        console.error("Google sign-in error:", error);
+        toast.error(authErrorMessage(error) || "فشل تسجيل الدخول عبر Google");
+      }
     } finally {
       setLoading(false);
     }
@@ -514,6 +556,7 @@ export default function Login() {
                       <input
                         required
                         type={showRegisterPassword ? "text" : "password"}
+                        minLength={6}
                         value={registerData.password}
                         onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
                         className="w-full pr-12 pl-12 bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
