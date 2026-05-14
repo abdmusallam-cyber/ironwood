@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FirebaseError } from "firebase/app";
 import {
   auth,
@@ -14,7 +14,8 @@ import {
   linkWithCredential,
   GoogleAuthProvider,
   signInWithPopup,
-  signInWithRedirect
+  signInWithRedirect,
+  signOut
 } from "firebase/auth";
 import {
   doc,
@@ -107,6 +108,7 @@ const initialRegisterState = {
 
 export default function Login() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [page, setPage] = useState<"login" | "register" | "verify" | "forgot">("login");
   const [loginData, setLoginData] = useState(initialLoginState);
   const [forgotIdentifier, setForgotIdentifier] = useState("");
@@ -149,6 +151,42 @@ export default function Login() {
       window.recaptchaVerifier = null;
     }
   };
+
+  useEffect(() => {
+    const wantSignOut =
+      searchParams.get("logout") === "1" || searchParams.get("signout") === "1";
+    if (!wantSignOut) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        await signOut(auth);
+      } catch (e) {
+        console.warn("signOut from login query:", e);
+      }
+      if (cancelled) return;
+      if (window.recaptchaVerifier) {
+        try {
+          window.recaptchaVerifier.clear();
+        } catch {
+          /* noop */
+        }
+        window.recaptchaVerifier = null;
+      }
+      setSearchParams({}, { replace: true });
+      setPage("login");
+      setLoginData(initialLoginState);
+      setRegisterData(initialRegisterState);
+      setForgotIdentifier("");
+      setVerificationId(null);
+      setOtp("");
+      toast.success("تم تسجيل الخروج. يمكنك تسجيل الدخول من جديد.");
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, setSearchParams]);
 
   const normalizePhone = (raw: string) => {
     const digits = raw

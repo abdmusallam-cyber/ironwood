@@ -1,6 +1,7 @@
 import { Link, useNavigate } from "react-router-dom";
 import { ShoppingCart, User, Menu, X, LogOut, Shield, Languages } from "lucide-react";
 import { useState, useEffect } from "react";
+import { signOut } from "firebase/auth";
 import { auth } from "../lib/firebase";
 import { getSiteSettings } from "../services/siteContent";
 import { UserProfile } from "../types";
@@ -18,8 +19,8 @@ export default function Navbar({ user }: NavbarProps) {
   const { t, i18n } = useTranslation();
 
   const handleLogout = async () => {
-    await auth.signOut();
-    navigate("/");
+    await signOut(auth);
+    navigate("/login", { replace: true });
   };
 
   const toggleLanguage = () => {
