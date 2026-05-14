@@ -1,16 +1,18 @@
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { ArrowRight, Star, Shield, Truck, Clock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { Product } from "../types";
-import { getHomeHighlights, HomeHighlight, getTestimonials, Testimonial } from "../services/siteContent";
+import { getHomeHighlights, HomeHighlight, getTestimonials, Testimonial, getSiteSettings, SiteSettings } from "../services/siteContent";
 
 export default function Home() {
   const [featuredProducts, setFeaturedProducts] = useState<Product[]>([]);
   const [highlights, setHighlights] = useState<HomeHighlight[]>([]);
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
+  const [siteSettings, setSiteSettings] = useState<SiteSettings | null>(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -21,6 +23,9 @@ export default function Home() {
         
         const hSnap = await getHomeHighlights();
         setHighlights(hSnap);
+
+        const settings = await getSiteSettings();
+        setSiteSettings(settings);
 
         const tSnap = await getTestimonials();
         setTestimonials(tSnap);
@@ -33,12 +38,25 @@ export default function Home() {
     fetchData();
   }, []);
 
-  const hero = highlights[0] || {
+  const slides = highlights.length > 0 ? highlights : [{
+    id: "default-hero",
     title: "جمال يدوم للأبد",
     description: "قطع أثاث مصنوعة يدوياً تعكس مهارة الحرفية السعودية، نجمع بين متانة الحديد ودفء الخشب الطبيعي.",
     imageUrl: "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&q=80&w=2000",
     category: "SUMMER COLLECTION 2026"
-  };
+  }];
+
+  const hero = slides[currentSlide] || slides[0];
+  const slideSpeed = (siteSettings?.heroSlideDuration || 6) * 1000;
+  const slideTransition = siteSettings?.heroTransition || "fade";
+
+  useEffect(() => {
+    if (slides.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentSlide(prev => (prev + 1) % slides.length);
+    }, slideSpeed);
+    return () => clearInterval(timer);
+  }, [slides.length, slideSpeed]);
 
   if (loading) return <div className="p-20 text-center animate-pulse">جاري التحميل...</div>;
 
@@ -47,19 +65,31 @@ export default function Home() {
       {/* Hero Section */}
       <section className="relative h-[90vh] flex items-center overflow-hidden bg-gradient-to-r from-brand-surface to-brand-iron">
         <div className="absolute inset-0 z-0">
-          {hero.imageUrl ? (
-            <img 
-              src={hero.imageUrl} 
-              alt="Hero Background"
-              className="w-full h-full object-cover brightness-[0.3]"
-            />
-          ) : (
-            <div className="w-full h-full bg-brand-iron" />
-          )}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={hero.id}
+              initial={slideTransition === "slide" ? { opacity: 0, x: 60 } : { opacity: 0 }}
+              animate={slideTransition === "slide" ? { opacity: 1, x: 0 } : { opacity: 1 }}
+              exit={slideTransition === "slide" ? { opacity: 0, x: -60 } : { opacity: 0 }}
+              transition={{ duration: 0.9 }}
+              className="absolute inset-0"
+            >
+              {hero.imageUrl ? (
+                <img 
+                  src={hero.imageUrl} 
+                  alt="Hero Background"
+                  className="w-full h-full object-cover brightness-[0.3]"
+                />
+              ) : (
+                <div className="w-full h-full bg-brand-iron" />
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
-        
+
         <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-brand-text">
           <motion.div
+            key={`hero-content-${hero.id}`}
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
@@ -92,9 +122,15 @@ export default function Home() {
           </motion.div>
         </div>
 
-        {/* Floating Scroll Indicator */}
-        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 text-white/40 animate-bounce">
-          <div className="w-px h-16 bg-gradient-to-b from-brand-gold to-transparent mx-auto" />
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 text-brand-text/70 flex items-center gap-3 z-10">
+          {slides.map((slide, index) => (
+            <button
+              key={slide.id}
+              onClick={() => setCurrentSlide(index)}
+              className={`w-3 h-3 rounded-full transition-all ${index === currentSlide ? "bg-brand-gold" : "bg-brand-text/20 hover:bg-brand-gold/60"}`}
+              aria-label={`انتقال إلى الشريحة ${index + 1}`}
+            />
+          ))}
         </div>
       </section>
 

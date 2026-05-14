@@ -39,10 +39,17 @@ export interface SiteSettings {
   instapayVpa?: string;
   successTitle?: string;
   successMessage?: string;
+  heroSlideDuration?: number;
+  heroTransition?: "fade" | "slide";
+  enablePhoneVerification?: boolean;
+  navigationLinks?: { label: string; path: string }[];
+  footerLinks?: { label: string; url: string }[];
+  privacyPolicyUrl?: string;
+  termsUrl?: string;
 }
 
 export const getHomeHighlights = async () => {
-  const snap = await getDocs(query(collection(db, "homeHighlights"), orderBy("createdAt", "desc")));
+  const snap = await getDocs(query(collection(db, "homeHighlights"), orderBy("createdAt", "asc")));
   return snap.docs.map(d => ({ ...d.data(), id: d.id } as HomeHighlight));
 };
 

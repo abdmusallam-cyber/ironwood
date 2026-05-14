@@ -70,6 +70,7 @@ export interface PortfolioItem {
 
 export interface UserProfile {
   id: string;
+  username?: string;
   displayName: string;
   email?: string;
   phoneNumber?: string;

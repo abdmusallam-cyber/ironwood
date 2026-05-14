@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { collection, getDocs, query, orderBy, limit, doc, deleteDoc, updateDoc, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../lib/firebase";
+import { auth, db } from "../lib/firebase";
+import { EmailAuthProvider, reauthenticateWithCredential, updatePassword } from "firebase/auth";
 import { Product, Order, OperationType, ShippingRate, UserProfile } from "../types";
 import { handleFirestoreError, cn } from "../lib/utils";
 import { seedDatabase } from "../lib/seedData";
 import { getHomeHighlights, getPortfolioItems, updateHomeHighlight, updatePortfolioItem, HomeHighlight, PortfolioItem, Testimonial, SiteSettings, getTestimonials, getSiteSettings, updateTestimonial, updateSiteSettings } from "../services/siteContent";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { useTranslation } from "react-i18next";
 import { 
   LayoutDashboard, 
   Package, 
@@ -54,10 +56,16 @@ import jsPDF from "jspdf";
 import html2pdf from "html2pdf.js";
 
 export default function AdminDashboard() {
-  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "marketing" | "content" | "shipping" | "users">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "products" | "orders" | "marketing" | "content" | "shipping" | "users" | "security" | "site">("overview");
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const { t } = useTranslation();
   const [shippingRates, setShippingRates] = useState<ShippingRate[]>([]);
   const [isRateModalOpen, setIsRateModalOpen] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordUpdating, setPasswordUpdating] = useState(false);
+  const [passwordStatus, setPasswordStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [editingRate, setEditingRate] = useState<Partial<ShippingRate> & { id?: string } | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -143,6 +151,47 @@ export default function AdminDashboard() {
       handleFirestoreError(error, OperationType.DELETE, "products/bulk");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdatePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setPasswordStatus(null);
+
+    if (!auth.currentUser || !auth.currentUser.email) {
+      setPasswordStatus({ type: 'error', message: 'لم يتم العثور على مستخدم حالياً.' });
+      return;
+    }
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordStatus({ type: 'error', message: 'يرجى ملء جميع حقول كلمة المرور.' });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordStatus({ type: 'error', message: 'كلمة المرور الجديدة غير متطابقة.' });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordStatus({ type: 'error', message: 'يجب أن تتكون كلمة المرور من 6 أحرف على الأقل.' });
+      return;
+    }
+
+    try {
+      setPasswordUpdating(true);
+      const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      await updatePassword(auth.currentUser, newPassword);
+      setPasswordStatus({ type: 'success', message: 'تم تحديث كلمة المرور بنجاح.' });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (error: any) {
+      console.error('Password update error:', error);
+      setPasswordStatus({ type: 'error', message: error?.message || 'فشل تحديث كلمة المرور. تحقق من كلمة المرور الحالية.' });
+    } finally {
+      setPasswordUpdating(false);
     }
   };
 
@@ -420,13 +469,15 @@ export default function AdminDashboard() {
   ];
 
   const sidebarItems = [
-    { id: "overview", label: "نظرة عامة", icon: LayoutDashboard },
-    { id: "products", label: "إدارة المخزون", icon: Package },
-    { id: "orders", label: "الطلبات", icon: ShoppingCart },
-    { id: "shipping", label: "إعدادات الشحن", icon: Truck },
-    { id: "users", label: "إدارة المستخدمين", icon: Users },
-    { id: "content", label: "المحتوى والمنصة", icon: Settings },
-    { id: "marketing", label: "أفكار تسويقية (AI)", icon: Lightbulb },
+    { id: "overview", label: t('admin.overview'), icon: LayoutDashboard },
+    { id: "products", label: t('admin.products'), icon: Package },
+    { id: "orders", label: t('admin.orders'), icon: ShoppingCart },
+    { id: "shipping", label: t('admin.shipping'), icon: Truck },
+    { id: "users", label: t('admin.users'), icon: Users },
+    { id: "site", label: t('admin.site'), icon: Box },
+    { id: "security", label: t('admin.security'), icon: Shield },
+    { id: "content", label: t('admin.content'), icon: Settings },
+    { id: "marketing", label: t('admin.marketing'), icon: Lightbulb },
   ];
 
   const MarketingAdvisor = () => {
@@ -1121,6 +1172,246 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {activeTab === "site" && siteSettings && (
+            <div className="space-y-12 pb-20">
+              <div className="bg-brand-surface border border-brand-border shadow-2xl overflow-hidden">
+                <div className="p-8 border-b border-brand-border bg-brand-iron/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                  <div>
+                    <h3 className="font-serif text-2xl font-bold italic tracking-tight">{t('admin.siteStructure')}</h3>
+                    <p className="text-[10px] uppercase tracking-widest text-brand-muted mt-1">{t('admin.siteDescription')}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setIsSaving(true);
+                        await updateSiteSettings(siteSettings.id, siteSettings);
+                        setSaveStatus({ type: 'success', message: t('admin.success') });
+                        setTimeout(() => setSaveStatus(null), 3000);
+                      } catch (error) {
+                        setSaveStatus({ type: 'error', message: t('admin.error') });
+                      } finally {
+                        setIsSaving(false);
+                      }
+                    }}
+                    disabled={isSaving}
+                    className="bg-brand-gold text-brand-iron px-8 py-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-white transition-all shadow-xl disabled:opacity-50"
+                  >
+                    {isSaving ? t('admin.saving') : t('admin.saveSiteSettings')}
+                  </button>
+                </div>
+
+                <div className="p-12 space-y-12">
+                  <div className="space-y-6">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                      <div>
+                        <h4 className="font-bold text-lg text-brand-text">{t('admin.navLinks')}</h4>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-brand-muted mt-1">{t('admin.navLinksDesc')}</p>
+                      </div>
+                      <button
+                        onClick={() => setSiteSettings({
+                          ...siteSettings,
+                          navigationLinks: [
+                            ...(siteSettings.navigationLinks || []),
+                            { label: 'رابط جديد', path: '/' }
+                          ]
+                        })}
+                        className="bg-brand-iron border border-brand-border text-brand-gold px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] hover:border-brand-gold transition-all"
+                      >{t('admin.addLink')}</button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {(siteSettings.navigationLinks || []).map((link, index) => (
+                        <div key={`${link.label}-${index}`} className="grid grid-cols-12 gap-4 items-center">
+                          <input
+                            value={link.label}
+                            onChange={(e) => {
+                              const next = [...(siteSettings.navigationLinks || [])];
+                              next[index] = { ...next[index], label: e.target.value };
+                              setSiteSettings({ ...siteSettings, navigationLinks: next });
+                            }}
+                            className="col-span-5 bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                            placeholder="نص الرابط"
+                          />
+                          <input
+                            value={link.path}
+                            onChange={(e) => {
+                              const next = [...(siteSettings.navigationLinks || [])];
+                              next[index] = { ...next[index], path: e.target.value };
+                              setSiteSettings({ ...siteSettings, navigationLinks: next });
+                            }}
+                            className="col-span-5 bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                            placeholder="الرابط /path"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = [...(siteSettings.navigationLinks || [])];
+                              next.splice(index, 1);
+                              setSiteSettings({ ...siteSettings, navigationLinks: next });
+                            }}
+                            className="col-span-2 bg-red-900 text-white p-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-red-800 transition-all"
+                          >حذف</button>
+                        </div>
+                      ))}
+                      {(siteSettings.navigationLinks || []).length === 0 && (
+                        <p className="text-sm text-brand-muted">{t('admin.noLinks')}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                      <div>
+                        <h4 className="font-bold text-lg text-brand-text">{t('admin.footerLinks')}</h4>
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-brand-muted mt-1">{t('admin.footerLinksDesc')}</p>
+                      </div>
+                      <button
+                        onClick={() => setSiteSettings({
+                          ...siteSettings,
+                          footerLinks: [
+                            ...(siteSettings.footerLinks || []),
+                            { label: 'رابط جديد', url: '/' }
+                          ]
+                        })}
+                        className="bg-brand-iron border border-brand-border text-brand-gold px-6 py-3 text-[10px] font-bold uppercase tracking-[0.2em] hover:border-brand-gold transition-all"
+                      >{t('admin.addLink')}</button>
+                    </div>
+
+                    <div className="space-y-4">
+                      {(siteSettings.footerLinks || []).map((link, index) => (
+                        <div key={`${link.label}-${index}`} className="grid grid-cols-12 gap-4 items-center">
+                          <input
+                            value={link.label}
+                            onChange={(e) => {
+                              const next = [...(siteSettings.footerLinks || [])];
+                              next[index] = { ...next[index], label: e.target.value };
+                              setSiteSettings({ ...siteSettings, footerLinks: next });
+                            }}
+                            className="col-span-5 bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                            placeholder="نص الرابط"
+                          />
+                          <input
+                            value={link.url}
+                            onChange={(e) => {
+                              const next = [...(siteSettings.footerLinks || [])];
+                              next[index] = { ...next[index], url: e.target.value };
+                              setSiteSettings({ ...siteSettings, footerLinks: next });
+                            }}
+                            className="col-span-5 bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                            placeholder="الرابط /url"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const next = [...(siteSettings.footerLinks || [])];
+                              next.splice(index, 1);
+                              setSiteSettings({ ...siteSettings, footerLinks: next });
+                            }}
+                            className="col-span-2 bg-red-900 text-white p-4 text-[10px] font-bold uppercase tracking-[0.2em] hover:bg-red-800 transition-all"
+                          >حذف</button>
+                        </div>
+                      ))}
+                      {(siteSettings.footerLinks || []).length === 0 && (
+                        <p className="text-sm text-brand-muted">{t('admin.noLinks')}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-4">
+                      <label className="text-[10px] uppercase tracking-widest text-brand-gold font-bold">{t('admin.privacyUrl')}</label>
+                      <input
+                        type="text"
+                        value={siteSettings.privacyPolicyUrl || ""}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, privacyPolicyUrl: e.target.value })}
+                        className="w-full bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                        placeholder="https://..."
+                      />
+                    </div>
+                    <div className="space-y-4">
+                      <label className="text-[10px] uppercase tracking-widest text-brand-gold font-bold">{t('admin.termsUrl')}</label>
+                      <input
+                        type="text"
+                        value={siteSettings.termsUrl || ""}
+                        onChange={(e) => setSiteSettings({ ...siteSettings, termsUrl: e.target.value })}
+                        className="w-full bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                        placeholder="https://..."
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "security" && (
+            <div className="bg-brand-surface border border-brand-border shadow-2xl p-10 space-y-8">
+              <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                <div>
+                  <h3 className="font-serif text-2xl font-bold italic tracking-tight">الأمان وتغيير كلمة المرور</h3>
+                  <p className="text-[10px] uppercase tracking-widest text-brand-muted mt-1">تحكم في حسابك من داخل لوحة التحكم.</p>
+                </div>
+                <div className="rounded-full border border-brand-border px-4 py-2 text-[10px] uppercase tracking-widest text-brand-gold">
+                  بريدك المسجل: {auth.currentUser?.email || "غير متوفر"}
+                </div>
+              </div>
+
+              <form onSubmit={handleUpdatePassword} className="grid gap-6 lg:grid-cols-3">
+                <div className="space-y-2 lg:col-span-3">
+                  <label className="text-[10px] uppercase tracking-widest text-brand-gold font-bold">كلمة المرور الحالية</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    className="w-full bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                    placeholder="أدخل كلمة المرور الحالية"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest text-brand-gold font-bold">كلمة المرور الجديدة</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="w-full bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                    placeholder="كلمة المرور الجديدة"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] uppercase tracking-widest text-brand-gold font-bold">تأكيد كلمة المرور الجديدة</label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full bg-brand-iron border border-brand-border p-4 text-brand-text outline-none focus:border-brand-gold"
+                    placeholder="أعد إدخال كلمة المرور"
+                  />
+                </div>
+
+                <div className="lg:col-span-3 flex flex-col gap-4">
+                  {passwordStatus && (
+                    <div className={cn(
+                      "p-4 border text-sm",
+                      passwordStatus.type === 'success' ? "border-green-900 bg-green-900/10 text-green-500" : "border-red-900 bg-red-900/10 text-red-500"
+                    )}>
+                      {passwordStatus.message}
+                    </div>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={passwordUpdating}
+                    className="w-full bg-brand-gold text-brand-iron font-bold uppercase tracking-[0.2em] py-4 hover:bg-white transition-all disabled:opacity-50"
+                  >
+                    {passwordUpdating ? "جاري التحديث..." : "تحديث كلمة المرور"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
           {activeTab === "content" && (
             <div className="space-y-12 pb-20">
               {/* Home Highlights Management */}
@@ -1146,7 +1437,7 @@ export default function AdminDashboard() {
                     <button 
                       onClick={() => {
                         const newH = { id: `high-${Date.now()}`, title: "عنوان جديد", description: "وصف جديد...", category: "COLLECTION 2026", imageUrl: "" };
-                        setHighlights([newH, ...highlights]);
+                        setHighlights([...highlights, newH]);
                       }}
                       className="bg-brand-iron border border-brand-border text-brand-gold px-6 py-2 text-[10px] font-bold uppercase tracking-widest hover:border-brand-gold transition-all"
                     >
@@ -1513,8 +1804,47 @@ export default function AdminDashboard() {
                               placeholder="شكراً لثقتك في IRON WOOD. لقد بدأنا العمل على تجهيز طلبك وسيصلك قريباً."
                             />
                           </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] uppercase tracking-widest text-brand-muted font-bold opacity-60">سرعة عرض شرائح الهيرو (بالثواني)</label>
+                            <input
+                              type="number"
+                              min={3}
+                              value={siteSettings.heroSlideDuration ?? 6}
+                              onChange={(e) => setSiteSettings({ ...siteSettings, heroSlideDuration: Number(e.target.value) })}
+                              className="w-full bg-brand-iron border border-brand-border p-5 text-lg font-mono text-brand-text outline-none focus:border-brand-gold transition-all"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] uppercase tracking-widest text-brand-muted font-bold opacity-60">حركة الانتقال في الهيرو</label>
+                            <select
+                              value={siteSettings.heroTransition || "fade"}
+                              onChange={(e) => setSiteSettings({ ...siteSettings, heroTransition: e.target.value as "fade" | "slide" })}
+                              className="w-full bg-brand-iron border border-brand-border p-5 text-lg font-mono text-brand-text outline-none focus:border-brand-gold transition-all"
+                            >
+                              <option value="fade">تلاشي (Fade)</option>
+                              <option value="slide">انزلاق (Slide)</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
+                      <div className="space-y-8">
+                        <h4 className="text-[10px] uppercase tracking-[0.3em] text-brand-gold font-bold border-b border-brand-border pb-4">إعدادات الأمان والميزات</h4>
+                        <div className="space-y-6">
+                          <div className="space-y-2">
+                            <label className="flex items-center gap-3 text-[10px] uppercase tracking-widest text-brand-muted font-bold opacity-60">
+                              <input
+                                type="checkbox"
+                                checked={siteSettings.enablePhoneVerification !== false}
+                                onChange={(e) => setSiteSettings({ ...siteSettings, enablePhoneVerification: e.target.checked })}
+                                className="h-4 w-4 accent-brand-gold"
+                              />
+                              تفعيل التحقق برقم الموبايل عند التسجيل
+                            </label>
+                            <p className="text-[10px] text-brand-muted italic ml-7">عند تعطيل هذا الخيار، سيختفي من صفحة التسجيل الجديد.</p>
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="space-y-8">
                         <h4 className="text-[10px] uppercase tracking-[0.3em] text-brand-gold font-bold border-b border-brand-border pb-4">الروابط الافتراضية والمنصات</h4>
                         <div className="space-y-6">

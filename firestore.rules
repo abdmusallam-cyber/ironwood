@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 0. Global Safety Net
+    // Global safety net
     match /{document=**} {
       allow read, write: if false;
     }
@@ -11,13 +11,6 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isVerified() {
-      return isSignedIn() && (
-        request.auth.token.email_verified == true || 
-        request.auth.token.firebase.sign_in_provider == 'phone'
-      );
-    }
-
     function isAdmin() {
       return isSignedIn() && (
         (request.auth.token.email != null && request.auth.token.email.lower() == 'abd.musallam@gmail.com'.lower()) ||
@@ -25,182 +18,64 @@ service cloud.firestore {
       );
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    // --- USERS ---
+    function isPublicUserQuery() {
+      return request.query.limit == 1
+        && request.query.orderBy.size() == 0
+        && request.query.where.size() == 1
+        && request.query.where[0].fieldPath in ['username', 'email', 'displayName'];
     }
 
-    function isValidId(id) {
-      return id is string && id.size() <= 128;
+    match /users/{userId} {
+      allow list: if isSignedIn() || isPublicUserQuery();
+      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && (request.auth.uid == userId || isAdmin());
     }
 
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
-    // --- PRODUCTS ---
+    // Allow other collections as needed
     match /products/{productId} {
-      allow read: if true; 
-      allow create: if isAdmin() && isValidProduct(incoming()) 
-        && incoming().createdAt == request.time 
-        && incoming().updatedAt == request.time;
-      allow update: if isAdmin() && isValidProduct(incoming()) && (
-        incoming().createdAt == existing().createdAt &&
-        incoming().updatedAt == request.time &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'price', 'discountPrice', 'stock', 'category', 'imageUrl', 'rating', 'updatedAt', 'variants', 'availableColors', 'isNew'])
-      );
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isAdmin();
+    }
+
+    match /testimonials/{testimonialId} {
+      allow read: if true;
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
-    function isValidProduct(data) {
-      return data.keys().hasAll(['title', 'price', 'stock', 'category', 'imageUrl', 'createdAt', 'updatedAt'])
-        && data.title is string && data.title.size() <= 500
-        && data.price is number && data.price >= 0
-        && data.stock is number && data.stock >= 0
-        && data.category in ['wood', 'metal', 'combined']
-        && data.imageUrl is string && data.imageUrl.size() <= 2000
-        && (!('description' in data) || (data.description is string && data.description.size() <= 5000))
-        && (!('discountPrice' in data) || (data.discountPrice is number && data.discountPrice >= 0))
-        && (!('variants' in data) || (data.variants is list && data.variants.size() <= 20))
-        && (!('availableColors' in data) || (data.availableColors is list && data.availableColors.size() <= 20))
-        && (!('isNew' in data) || (data.isNew is bool));
-    }
-
-    // --- ORDERS ---
-    match /orders/{orderId} {
-      allow get: if (isOwner(existing().userId) || isAdmin()) && isValidId(orderId);
-      allow list: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow create: if isVerified() && isValidId(orderId) && isValidOrder(incoming()) 
-        && incoming().userId == request.auth.uid
-        && incoming().createdAt == request.time;
-      allow update: if isAdmin() && isValidId(orderId) && (
-        incoming().status in ['pending', 'confirmed', 'processing', 'paid', 'shipped', 'delivered', 'vodafone_cash', 'instapay', 'cod'] &&
-        incoming().createdAt == existing().createdAt &&
-        (!('updatedAt' in incoming()) || incoming().updatedAt == request.time) &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
-      );
-    }
-
-    function isValidOrder(data) {
-      return data.keys().hasAll(['userId', 'items', 'total', 'status', 'createdAt', 'shippingInfo'])
-        && data.userId is string && data.userId.size() <= 128
-        && data.items is list && data.items.size() <= 50
-        && data.total is number && data.total >= 0
-        && (!('shippingCost' in data) || (data.shippingCost is number && data.shippingCost >= 0))
-        && data.status in ['pending', 'confirmed', 'processing', 'paid', 'shipped', 'delivered', 'vodafone_cash', 'instapay', 'cod']
-        && data.shippingInfo is map
-        && data.shippingInfo.name is string && data.shippingInfo.name.size() <= 200
-        && data.shippingInfo.address is string && data.shippingInfo.address.size() <= 1000
-        && (!('governorate' in data.shippingInfo) || (data.shippingInfo.governorate is string && data.shippingInfo.governorate.size() <= 200))
-        && data.shippingInfo.city is string && data.shippingInfo.city.size() <= 200
-        && data.shippingInfo.phone is string && data.shippingInfo.phone.size() <= 50
-        && data.shippingInfo.paymentMethod in ['cod', 'card', 'transfer', 'vodafone_cash', 'instapay'];
-    }
-
-    // --- TESTIMONIALS ---
-    match /testimonials/{testimonialId} {
-      allow read: if true;
-      allow create, update: if isAdmin() && isValidId(testimonialId) && isValidTestimonial(incoming());
-      allow delete: if isAdmin() && isValidId(testimonialId);
-    }
-
-    function isValidTestimonial(data) {
-      return data.keys().hasAll(['name', 'role', 'quote'])
-        && data.name is string && data.name.size() <= 200
-        && data.role is string && data.role.size() <= 200
-        && data.quote is string && data.quote.size() <= 1000;
-    }
-
-    // --- SETTINGS ---
     match /settings/{settingId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidId(settingId) && isValidSettings(incoming());
+      allow create, update: if isAdmin();
     }
 
-    function isValidSettings(data) {
-      return data.phone is string && data.phone.size() <= 100
-        && (!('vodafoneCashNumber' in data) || (data.vodafoneCashNumber is string && data.vodafoneCashNumber.size() <= 100))
-        && (!('instapayVpa' in data) || (data.instapayVpa is string && data.instapayVpa.size() <= 200))
-        && (!('successTitle' in data) || (data.successTitle is string && data.successTitle.size() <= 500))
-        && (!('successMessage' in data) || (data.successMessage is string && data.successMessage.size() <= 2000));
-    }
-
-    // --- PORTFOLIO ---
     match /portfolio/{portfolioId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidId(portfolioId) && isValidPortfolioItem(incoming());
-      allow delete: if isAdmin() && isValidId(portfolioId);
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
-    function isValidPortfolioItem(data) {
-      return data.keys().hasAll(['title', 'category', 'year', 'imageUrl'])
-        && data.title is string && data.title.size() <= 500
-        && data.category is string && data.category.size() <= 200
-        && data.year is string && data.year.size() <= 50
-        && data.imageUrl is string && data.imageUrl.size() <= 2000;
-    }
-
-    // --- HOME HIGHLIGHTS ---
     match /homeHighlights/{highlightId} {
       allow read: if true;
-      allow create, update: if isAdmin() && isValidId(highlightId) && isValidHighlight(incoming());
-      allow delete: if isAdmin() && isValidId(highlightId);
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
-    function isValidHighlight(data) {
-      return data.keys().hasAll(['title', 'description', 'imageUrl', 'category'])
-        && data.title is string && data.title.size() <= 500
-        && data.description is string && data.description.size() <= 2000
-        && data.imageUrl is string && data.imageUrl.size() <= 2000
-        && data.category is string && data.category.size() <= 200;
-    }
-
-    // --- MESSAGES ---
     match /messages/{messageId} {
-      allow create: if isSignedIn() && isValidId(messageId);
-      allow read: if isSignedIn() && isValidId(messageId) && (resource.data.senderId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow read: if isSignedIn() && (resource.data.senderId == request.auth.uid || isAdmin());
     }
 
-    // --- USERS ---
-    match /users/{userId} {
-      allow list: if isAdmin();
-      allow get: if (isOwner(userId) || isAdmin()) && isValidId(userId);
-      allow create: if isOwner(userId) && isValidId(userId) && isValidUser(incoming())
-        && incoming().keys().hasAll(['displayName', 'role', 'createdAt'])
-        && incoming().role == 'user'
-        && incoming().createdAt == request.time;
-      allow update: if (isOwner(userId) || isAdmin()) && isValidId(userId) && isValidUser(incoming())
-        && (isAdmin() || (
-            incoming().role == existing().role &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'phoneNumber', 'address', 'governorate', 'city', 'updatedAt'])
-        ));
-    }
-
-    function isValidUser(data) {
-      return (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 500))
-        && (!('role' in data) || (data.role in ['user', 'admin']))
-        && (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 100))
-        && (!('email' in data) || (data.email is string && data.email.size() <= 500))
-        && (!('address' in data) || (data.address is string && data.address.size() <= 1000))
-        && (!('governorate' in data) || (data.governorate is string && data.governorate.size() <= 200))
-        && (!('city' in data) || (data.city is string && data.city.size() <= 200))
-        && (!('updatedAt' in data) || (data.updatedAt == request.time))
-        && (!('createdAt' in data) || (data.createdAt is timestamp));
-    }
-    
-    // --- ADMINS ---
-    match /admins/{userId} {
-      allow read: if isSignedIn() && isValidId(userId);
-      allow write: if false; 
-    }
-
-    // --- SHIPPING RATES ---
     match /shippingRates/{rateId} {
       allow read: if true;
-      allow create, update, delete: if isAdmin() && isValidId(rateId);
+      allow create, update, delete: if isAdmin();
     }
   }
 }

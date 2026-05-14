@@ -9,6 +9,9 @@ import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc, getDocFromServer } from "firebase/firestore";
 import { auth, db } from "./lib/firebase";
 import { UserProfile } from "./types";
+import "./lib/i18n";
+import { I18nextProvider } from "react-i18next";
+import i18n from "./lib/i18n";
 
 // Pages
 import Home from "./pages/Home";
@@ -95,36 +98,38 @@ export default function App() {
   }
 
   return (
-    <AuthContext.Provider value={{ user, setUser, loading }}>
-      <CartProvider>
-        <Toaster position="bottom-right" richColors theme="dark" expand={true} />
-        <Router>
-          <div className="flex flex-col min-h-screen">
-            <Navbar user={user} />
-            <main className="flex-grow">
-              <Routes>
-                <Route path="/" element={<Home />} />
-                <Route path="/new-arrivals" element={<NewArrivals />} />
-                <Route path="/products" element={<Products />} />
-                <Route path="/product/:id" element={<ProductDetails />} />
-                <Route path="/cart" element={<Cart />} />
-                <Route path="/portfolio" element={<Portfolio />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
-                <Route 
-                  path="/checkout" 
-                  element={user ? <Checkout /> : <Navigate to="/login" />} 
-                />
-                <Route 
-                  path="/admin/*" 
-                  element={user?.role === "admin" ? <AdminDashboard /> : <Navigate to="/" />} 
-                />
-              </Routes>
-            </main>
-            <Footer />
-          </div>
-        </Router>
-      </CartProvider>
-    </AuthContext.Provider>
+    <I18nextProvider i18n={i18n}>
+      <AuthContext.Provider value={{ user, setUser, loading }}>
+        <CartProvider>
+          <Toaster position="bottom-right" richColors theme="dark" expand={true} />
+          <Router>
+            <div className="flex flex-col min-h-screen">
+              <Navbar user={user} />
+              <main className="flex-grow">
+                <Routes>
+                  <Route path="/" element={<Home />} />
+                  <Route path="/new-arrivals" element={<NewArrivals />} />
+                  <Route path="/products" element={<Products />} />
+                  <Route path="/product/:id" element={<ProductDetails />} />
+                  <Route path="/cart" element={<Cart />} />
+                  <Route path="/portfolio" element={<Portfolio />} />
+                  <Route path="/login" element={<Login />} />
+                  <Route path="/profile" element={user ? <Profile /> : <Navigate to="/login" />} />
+                  <Route 
+                    path="/checkout" 
+                    element={user ? <Checkout /> : <Navigate to="/login" />} 
+                  />
+                  <Route 
+                    path="/admin/*" 
+                    element={user?.role === "admin" ? <AdminDashboard /> : <Navigate to="/" />} 
+                  />
+                </Routes>
+              </main>
+              <Footer />
+            </div>
+          </Router>
+        </CartProvider>
+      </AuthContext.Provider>
+    </I18nextProvider>
   );
 }

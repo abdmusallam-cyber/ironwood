@@ -1,0 +1,62 @@
+{
+  "nav": {
+    "home": "Home",
+    "newArrivals": "New Arrivals",
+    "products": "Products",
+    "portfolio": "Portfolio",
+    "cart": "Cart",
+    "profile": "Profile",
+    "login": "Login",
+    "logout": "Logout",
+    "admin": "Admin"
+  },
+  "footer": {
+    "quickLinks": "Quick Links",
+    "contact": "Contact Us",
+    "followUs": "Follow Us",
+    "newsletter": "Subscribe to our newsletter",
+    "emailPlaceholder": "Email address",
+    "join": "Join",
+    "copyright": "© {{year}} IRON WOOD MANUFACTURING CO.",
+    "privacy": "Privacy Policy",
+    "terms": "Terms & Conditions"
+  },
+  "admin": {
+    "overview": "Overview",
+    "products": "Inventory Management",
+    "orders": "Orders",
+    "shipping": "Shipping Settings",
+    "users": "User Management",
+    "site": "Site Content",
+    "security": "Security & Password",
+    "content": "Content & Platform",
+    "marketing": "Marketing Ideas (AI)",
+    "siteStructure": "Site Structure Management",
+    "siteDescription": "Control navigation links, footer, privacy policy and terms pages.",
+    "saveSiteSettings": "Save Site Settings",
+    "navLinks": "Main Navigation Links",
+    "navLinksDesc": "Control the links that appear in the navigation bar.",
+    "addLink": "Add Link",
+    "footerLinks": "Footer Quick Links",
+    "footerLinksDesc": "Quick links that appear in the footer.",
+    "privacyUrl": "Privacy Policy URL",
+    "termsUrl": "Terms & Conditions URL",
+    "delete": "Delete",
+    "label": "Link Text",
+    "path": "Path /path",
+    "url": "URL /url",
+    "noLinks": "No links added yet.",
+    "saving": "Saving...",
+    "success": "Site settings saved successfully",
+    "error": "Error saving site settings"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No"
+  }
+}

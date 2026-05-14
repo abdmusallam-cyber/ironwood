@@ -5,7 +5,7 @@ import {
   assertSucceeds,
   RulesTestContext,
 } from "@firebase/rules-unit-testing";
-import { setDoc, getDoc, doc, collection, getDocs, query, serverTimestamp } from "firebase/firestore";
+import { setDoc, getDoc, doc, collection, getDocs, query, where, limit, serverTimestamp } from "firebase/firestore";
 import fs from "fs";
 
 /**
@@ -126,5 +126,49 @@ describe("Firestore Security Rules", () => {
         updatedAt: serverTimestamp(),
       }, { merge: true })
     );
+  });
+
+  test("unauthenticated user can query users by username", async () => {
+    const db = getUnauthenticatedContext().firestore();
+    await assertSucceeds(
+      getDocs(query(collection(db, "users"), where("username", "==", "alice"), limit(1)))
+    );
+  });
+
+  test("authenticated user can create their own user document", async () => {
+    const uid = "user-123";
+    const db = getAuthenticatedContext(uid, "user@example.com").firestore();
+    await assertSucceeds(
+      setDoc(doc(db, "users", uid), {
+        username: "user-123",
+        displayName: "User 123",
+        email: "user@example.com",
+      })
+    );
+  });
+
+  test("authenticated user cannot create another user's document", async () => {
+    const db = getAuthenticatedContext("user-A", "a@example.com").firestore();
+    await assertFails(
+      setDoc(doc(db, "users", "user-B"), {
+        username: "user-B",
+        displayName: "User B",
+        email: "b@example.com",
+      })
+    );
+  });
+
+  test("authenticated user can read their own user document", async () => {
+    const uid = "user-123";
+    const db = getAuthenticatedContext(uid, "user@example.com").firestore();
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users/user-123"), {
+        username: "user-123",
+        displayName: "User 123",
+        email: "user@example.com",
+      });
+    });
+
+    await assertSucceeds(getDoc(doc(db, "users", uid)));
   });
 });

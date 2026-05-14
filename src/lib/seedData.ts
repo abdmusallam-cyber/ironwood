@@ -137,6 +137,23 @@ export async function seedDatabase() {
     instagram: "https://instagram.com",
     facebook: "https://facebook.com",
     twitter: "https://twitter.com",
-    aboutText: "تجارة وتصنيع الأثاث الخشبي والمعدني الفاخر. نجمع بين قوة المعدن وجمال الخشب لنصنع قطعاً فنية تدوم طويلاً."
+    aboutText: "تجارة وتصنيع الأثاث الخشبي والمعدني الفاخر. نجمع بين قوة المعدن وجمال الخشب لنصنع قطعاً فنية تدوم طويلاً.",
+    heroSlideDuration: 6,
+    heroTransition: "fade",
+    enablePhoneVerification: true,
+    navigationLinks: [
+      { label: "الرئيسية", path: "/" },
+      { label: "وصل حديثاً", path: "/new-arrivals" },
+      { label: "المنتجات", path: "/products" },
+      { label: "أعمالنا", path: "/portfolio" }
+    ],
+    footerLinks: [
+      { label: "الرئيسية", url: "/" },
+      { label: "منتجاتنا", url: "/products" },
+      { label: "أعمالنا", url: "/portfolio" },
+      { label: "حسابي", url: "/login" }
+    ],
+    privacyPolicyUrl: "#/privacy",
+    termsUrl: "#/terms"
   });
 }
