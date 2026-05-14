@@ -19,9 +19,11 @@ service cloud.firestore {
     }
 
     // --- USERS ---
+    // Registration + login resolve username/email via Firestore before auth.
+    // Do not require orderBy.size() == 0: clients may send an implicit __name__ order,
+    // which would deny all public lookups and break sign-up with PERMISSION_DENIED.
     function isPublicUserQuery() {
       return request.query.limit == 1
-        && request.query.orderBy.size() == 0
         && request.query.where.size() == 1
         && request.query.where[0].fieldPath in ['username', 'email', 'displayName'];
     }
