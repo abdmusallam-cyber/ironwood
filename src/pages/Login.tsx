@@ -1,5 +1,6 @@
 ﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { FirebaseError } from "firebase/app";
 import {
   auth,
   db
@@ -38,6 +39,39 @@ import {
   EyeOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+
+function authErrorMessage(error: unknown): string {
+  if (error instanceof FirebaseError && error.code.startsWith("auth/")) {
+    switch (error.code) {
+      case "auth/invalid-credential":
+        return "البريد أو كلمة المرور غير صحيحة، أو الحساب أُنشئ بتسجيل دخول مختلف (مثل Google فقط). جرّب «دخول عبر Google» أو «نسيت كلمة المرور».";
+      case "auth/wrong-password":
+      case "auth/user-not-found":
+        return "البريد أو كلمة المرور غير صحيحة، أو لا يوجد حساب بهذا البريد.";
+      case "auth/invalid-email":
+        return "صيغة البريد الإلكتروني غير صحيحة.";
+      case "auth/user-disabled":
+        return "تم تعطيل هذا الحساب. تواصل مع الدعم.";
+      case "auth/too-many-requests":
+        return "محاولات كثيرة. انتظر قليلاً ثم أعد المحاولة.";
+      case "auth/popup-closed-by-user":
+        return "تم إغلاق نافذة Google قبل إكمال الدخول.";
+      case "auth/account-exists-with-different-credential":
+        return "هذا البريد مسجل بطريقة دخول أخرى. استخدم نفس الطريقة السابقة أو ربط الحساب من إعدادات Google في Firebase.";
+      case "auth/email-already-in-use":
+        return "البريد الإلكتروني مستخدم بالفعل.";
+      case "auth/weak-password":
+        return "كلمة المرور ضعيفة. اختر كلمة أقوى.";
+      case "auth/invalid-verification-code":
+      case "auth/invalid-verification-id":
+        return "رمز التحقق غير صحيح أو منتهي. اطلب رمزاً جديداً.";
+      default:
+        return error.message;
+    }
+  }
+  if (error instanceof Error) return error.message;
+  return "حدث خطأ غير متوقع.";
+}
 
 const initialLoginState = { identifier: "", password: "" };
 const initialRegisterState = {
@@ -155,7 +189,7 @@ export default function Login() {
       navigate("/");
     } catch (error: any) {
       console.error("Login error:", error);
-      toast.error(error.message || "فشل تسجيل الدخول. تأكد من بياناتك.");
+      toast.error(authErrorMessage(error) || "فشل تسجيل الدخول. تأكد من بياناتك.");
     } finally {
       setLoading(false);
     }
@@ -219,7 +253,7 @@ export default function Login() {
       }
     } catch (error: any) {
       console.error("Register error:", error);
-      toast.error(error.message || "فشل التسجيل. يرجى التحقق من البيانات.");
+      toast.error(authErrorMessage(error) || "فشل التسجيل. يرجى التحقق من البيانات.");
     } finally {
       setLoading(false);
     }
@@ -239,7 +273,7 @@ export default function Login() {
       navigate("/");
     } catch (error: any) {
       console.error("Verify OTP error:", error);
-      toast.error(error.message || "رمز التحقق غير صحيح.");
+      toast.error(authErrorMessage(error) || "رمز التحقق غير صحيح.");
     } finally {
       setLoading(false);
     }
@@ -272,7 +306,7 @@ export default function Login() {
       setLoginData({ ...loginData, identifier: email });
     } catch (error: any) {
       console.error("Forgot password error:", error);
-      toast.error(error.message || "فشل إرسال رسالة الاستعادة. تحقق من البيانات وحاول مرة أخرى.");
+      toast.error(authErrorMessage(error) || "فشل إرسال رسالة الاستعادة. تحقق من البيانات وحاول مرة أخرى.");
     } finally {
       setLoading(false);
     }
@@ -306,7 +340,7 @@ export default function Login() {
       navigate("/");
     } catch (error: any) {
       console.error("Google sign-in error:", error);
-      toast.error(error.message || "فشل تسجيل الدخول عبر Google");
+      toast.error(authErrorMessage(error) || "فشل تسجيل الدخول عبر Google");
     } finally {
       setLoading(false);
     }
